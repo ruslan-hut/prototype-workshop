@@ -135,6 +135,13 @@ export type Stay = {
   area: string
   nights: number
   price: number
+  photos?: string[]
+  description?: string
+  amenities?: string[]
+  rating?: number
+  roomType?: string
+  boardType?: string
+  cancellation?: string
 }
 
 export type ItineraryItem = {

@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { insertSearchRequestSchema, type TravelOffer, type Itinerary, type SearchInput } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { describeDestination } from "./ai/destination";
+import { searchHotels, getCityCode } from "./ai/hotels";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Get all destinations
@@ -98,104 +99,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 async function generateMockOffers(searchInput: SearchInput, seed: number): Promise<TravelOffer[]> {
   const destinations = searchInput.to.length > 0 ? searchInput.to : ['Барселона'];
-  const basePrice = searchInput.budget.max * 0.7;
+  const checkInDate = searchInput.dateFrom || '2024-09-15';
+  const checkOutDate = searchInput.dateTo || '2024-09-20';
+  const nights = Math.max(1, new Date(checkOutDate).getTime() - new Date(checkInDate).getTime()) / (1000 * 60 * 60 * 24);
   
   // Determine season from date
   const season = getSeasonFromDate(searchInput.dateFrom || undefined);
   
-  // Create base offers
-  const baseOffers: TravelOffer[] = [
-    {
+  // Get real hotel data for the destination
+  const cityCode = getCityCode(destinations[0]);
+  const hotels = await searchHotels({
+    cityCode,
+    checkInDate,
+    checkOutDate,
+    adults: searchInput.travelers?.adults || 2,
+    children: searchInput.travelers?.children || 0,
+    roomQuantity: 1,
+    currency: 'EUR'
+  });
+
+  // Create offers using real hotel data
+  const baseOffers: TravelOffer[] = hotels.slice(0, 3).map((hotel, index) => {
+    const budgetMultipliers = [0.8, 1.0, 1.4]; // budget, comfort, premium
+    const tierNames = ['економ', 'комфорт', 'преміум'];
+    const carriers = ['Ryanair', 'Vueling', 'Lufthansa'];
+    const flightPrices = [120, 180, 320];
+    const tags = [
+      ['бюджет', 'центр', 'культура'],
+      ['комфорт', 'центр', 'гастрономія'],
+      ['преміум', 'люкс', 'ексклюзив']
+    ];
+
+    const flightPrice = flightPrices[index];
+    const totalPrice = hotel.price.total + flightPrice;
+
+    return {
       id: randomUUID(),
-      title: `${destinations[0]}: 5 днів (економ)`,
-      summary: 'Бюджетний варіант з гарним співвідношенням ціна-якість',
+      title: `${destinations[0]}: ${nights} днів (${tierNames[index]})`,
+      summary: index === 0 ? 'Бюджетний варіант з гарним співвідношенням ціна-якість' :
+               index === 1 ? 'Оптимальний баланс комфорту та вражень' :
+               'Розкішний відпочинок без компромісів',
       price: {
-        total: Math.round(basePrice * 0.8),
-        perPerson: Math.round(basePrice * 0.8 / Math.max(1, searchInput.budget.perPerson ? 1 : 2)),
+        total: totalPrice,
+        perPerson: Math.round(totalPrice / Math.max(1, searchInput.travelers?.adults || 2)),
         currency: 'EUR'
       },
       flights: [{
         from: searchInput.from || 'KBP',
         to: destinations[0],
-        dep: searchInput.dateFrom || '2024-09-15',
-        ret: searchInput.dateTo || '2024-09-20',
-        carrier: 'Ryanair',
-        price: 120
+        dep: checkInDate,
+        ret: checkOutDate,
+        carrier: carriers[index],
+        price: flightPrice
       }],
       stay: [{
-        name: 'Hotel Barcelona Center',
-        stars: 3,
-        area: 'Eixample',
-        nights: 4,
-        price: 85
+        name: hotel.name,
+        stars: Math.round(hotel.rating || 4),
+        area: hotel.location.address,
+        nights: Math.round(nights),
+        price: hotel.price.perNight,
+        photos: hotel.photos,
+        description: hotel.description,
+        amenities: hotel.amenities,
+        rating: hotel.rating,
+        roomType: hotel.roomType,
+        boardType: hotel.boardType,
+        cancellation: hotel.cancellation
       }],
       itineraryPreview: [
-        { day: 1, items: ['Прибуття', 'Sagrada Familia', 'Вечеря в Готичному кварталі'] },
-        { day: 2, items: ['Park Güell', 'Casa Batlló', 'Пляж Barceloneta'] }
+        { day: 1, items: ['Прибуття', 'Sagrada Familia', index === 0 ? 'Вечеря в Готичному кварталі' : index === 1 ? 'Гастрономічний тур' : 'Мішеленівський ресторан'] },
+        { day: 2, items: ['Park Güell', index === 0 ? 'Casa Batlló' : index === 1 ? 'Музей Пікассо' : 'Приватна екскурсія по Gaudí', index === 0 ? 'Пляж Barceloneta' : index === 1 ? 'Фламенко шоу' : 'Яхт тур'] }
       ],
-      tags: ['бюджет', 'центр', 'культура']
-    },
-    {
-      id: randomUUID(),
-      title: `${destinations[0]}: 5 днів (комфорт)`,
-      summary: 'Оптимальний баланс комфорту та вражень',
-      price: {
-        total: Math.round(basePrice),
-        perPerson: Math.round(basePrice / Math.max(1, searchInput.budget.perPerson ? 1 : 2)),
-        currency: 'EUR'
-      },
-      flights: [{
-        from: searchInput.from || 'KBP',
-        to: destinations[0],
-        dep: searchInput.dateFrom || '2024-09-15',
-        ret: searchInput.dateTo || '2024-09-20',
-        carrier: 'Vueling',
-        price: 180
-      }],
-      stay: [{
-        name: 'Hotel Majestic',
-        stars: 4,
-        area: 'Passeig de Gràcia',
-        nights: 4,
-        price: 150
-      }],
-      itineraryPreview: [
-        { day: 1, items: ['Прибуття', 'Sagrada Familia', 'Гастрономічний тур'] },
-        { day: 2, items: ['Park Güell', 'Музей Пікассо', 'Фламенко шоу'] }
-      ],
-      tags: ['комфорт', 'центр', 'гастрономія']
-    },
-    {
-      id: randomUUID(),
-      title: `${destinations[0]}: 5 днів (преміум)`,
-      summary: 'Розкішний відпочинок без компромісів',
-      price: {
-        total: Math.round(basePrice * 1.4),
-        perPerson: Math.round(basePrice * 1.4 / Math.max(1, searchInput.budget.perPerson ? 1 : 2)),
-        currency: 'EUR'
-      },
-      flights: [{
-        from: searchInput.from || 'KBP',
-        to: destinations[0],
-        dep: searchInput.dateFrom || '2024-09-15',
-        ret: searchInput.dateTo || '2024-09-20',
-        carrier: 'Lufthansa',
-        price: 320
-      }],
-      stay: [{
-        name: 'Hotel Arts Barcelona',
-        stars: 5,
-        area: 'Port Olímpic',
-        nights: 4,
-        price: 300
-      }],
-      itineraryPreview: [
-        { day: 1, items: ['Прибуття', 'Spa процедури', 'Мішеленівський ресторан'] },
-        { day: 2, items: ['Приватна екскурсія по Gaudí', 'Яхт тур', 'Дегустація вин'] }
-      ],
-      tags: ['преміум', 'люкс', 'ексклюзив']
-    }
-  ];
+      tags: tags[index]
+    };
+  });
 
   // Add AI-generated destination summaries to each offer
   const enrichedOffers = await Promise.all(
