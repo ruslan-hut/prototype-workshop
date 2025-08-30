@@ -75,3 +75,113 @@ export type InsertOffer = z.infer<typeof insertOfferSchema>;
 export type Offer = typeof offers.$inferSelect;
 export type InsertSearchRequest = z.infer<typeof insertSearchRequestSchema>;
 export type SearchRequest = typeof searchRequests.$inferSelect;
+
+// AI Travel Assistant Types
+export type TravelerType = {
+  type: 'adult' | 'child'
+  age?: number
+}
+
+export type DateFlexibility = {
+  enabled: boolean
+  days: number
+}
+
+export type Budget = {
+  min: number
+  max: number
+  perPerson: boolean
+}
+
+export type UserProfile = {
+  travelers: TravelerType[]
+  homeAirport: string | null
+  locale: string
+  currency: string
+}
+
+export type SearchInput = {
+  nlq: string
+  from: string | null
+  to: string[]
+  dateFrom: string | null
+  dateTo: string | null
+  dateFlex: DateFlexibility
+  budget: Budget
+  interests: string[]
+  stayType: string[]
+  transport: string[]
+  pace: 'chill' | 'balanced' | 'intense'
+}
+
+export type Flight = {
+  from: string
+  to: string
+  dep: string
+  ret: string
+  carrier: string
+  price: number
+}
+
+export type Stay = {
+  name: string
+  stars?: number
+  area: string
+  nights: number
+  price: number
+}
+
+export type ItineraryItem = {
+  day: number
+  items: string[]
+}
+
+export type TravelOffer = {
+  id: string
+  title: string
+  summary: string
+  price: {
+    total: number
+    perPerson: number
+    currency: string
+  }
+  flights?: Flight[]
+  stay?: Stay[]
+  itineraryPreview?: ItineraryItem[]
+  tags?: string[]
+}
+
+export type ItinerarySegment = {
+  type: 'activity' | 'move' | 'rest'
+  title: string
+  time?: string
+  price?: number
+}
+
+export type ItineraryDay = {
+  date: string
+  segments: ItinerarySegment[]
+}
+
+export type Itinerary = {
+  days: ItineraryDay[]
+  totals: {
+    price: number
+    currency: string
+  }
+}
+
+export type AppFlags = {
+  loading: boolean
+  error: string | null
+}
+
+export type GlobalState = {
+  userProfile: UserProfile
+  searchInput: SearchInput
+  offers: TravelOffer[]
+  selectedOfferId: string | null
+  itinerary: Itinerary
+  shareLink: string | null
+  flags: AppFlags
+}

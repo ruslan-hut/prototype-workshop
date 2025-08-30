@@ -1,0 +1,265 @@
+meta:
+  name: "AI Travel Booking Assistant"
+  version: "0.1"
+  routing: "hash"   # або history
+  theme: "light"
+
+state:
+  global:
+    userProfile:
+      travelers: []
+      homeAirport: null
+      locale: "uk-UA"
+      currency: "EUR"
+    searchInput:
+      nlq: ""                 # вільний текст: "Барселона на 5 днів у вересні до 800€"
+      from: null              # "KBP" | "WAW" | місто
+      to: []                  # список міст/країн
+      dateFrom: null
+      dateTo: null
+      dateFlex: { enabled: true, +-days: 3 }
+      budget: { min: 0, max: 1200, perPerson: true }
+      interests: []           # ["пляж","їжа","музеї","з дітьми","нічне життя"]
+      stayType: ["hotel"]     # hotel | apartment | hostel
+      transport: ["flight"]   # flight | train | bus | car
+      pace: "balanced"        # chill | balanced | intense
+    offers: []                # згенеровані пакети
+    selectedOfferId: null
+    itinerary:
+      days: []                # [{date, segments:[{type:"activity|move|rest", title, time, price}]}]
+      totals: { price: 0, currency: "EUR" }
+    shareLink: null
+    flags:
+      loading: false
+      error: null
+
+ai:
+  prompts:
+    generateOffers: |
+      You are a travel-planning assistant. Given the following user input (JSON), propose 3-5 complete trip bundles:
+      - flight/transport options (round trip if relevant)
+      - 1-2 lodging choices per bundle
+      - day-by-day draft itinerary with 2-4 activities/day
+      - per-person and total price estimates in {{currency}}
+      - note trade-offs (price vs comfort vs location)
+      Input:
+      {{searchInputJSON}}
+
+    refineOffers: |
+      The user wants to refine the current selection. Consider constraints and propose updated bundles or edits.
+      Constraints:
+      {{constraintsJSON}}
+      Current selection:
+      {{currentOfferJSON}}
+
+    buildItinerary: |
+      Convert the selected bundle into a daily itinerary. Include times, travel between points, and rough prices.
+
+endpoints: # мокові хендлери у Replit (можна реалізувати на Node/Express або Python/Flask)
+  - id: POST_/ai/generate_offers
+    input: searchInput
+    output: offers[]
+  - id: POST_/ai/refine
+    input: { constraints, currentOffer }
+    output: offers[]
+  - id: POST_/ai/itinerary
+    input: selectedOffer
+    output: itinerary
+
+screens:
+  - id: start
+    title: "Куди летимо?"
+    components:
+      - type: Header
+        props: { title: "AI помічник для подорожей" }
+      - type: NLQInput
+        id: nlq
+        placeholder: "Напр.: «Барселона 5 днів у вересні до 800€ для двох»"
+        bind: state.searchInput.nlq
+      - type: Chips
+        id: quickIntents
+        options:
+          - "Вихідні у Європі"
+          - "Тепле море у жовтні"
+          - "Сімейна поїздка з дітьми"
+      - type: ButtonRow
+        buttons:
+          - { id: goQuickSurvey, label: "Швидкий опитник" }
+          - { id: parseNLQ, label: "Згенерувати варіанти" }
+    transitions:
+      - on: click.goQuickSurvey
+        to: survey_basics
+      - on: click.parseNLQ
+        do:
+          - action: parseNLQToForm   # простий NLP парсер (можна заглушку)
+          - action: call:POST_/ai/generate_offers
+        to: offers_list
+
+  - id: survey_basics
+    title: "Параметри поїздки"
+    components:
+      - type: FromToPicker   # місто/країна/аеропорт
+        bindFrom: state.searchInput.from
+        bindTo: state.searchInput.to
+      - type: DateRange
+        bindFrom: state.searchInput.dateFrom
+        bindTo: state.searchInput.dateTo
+        flexSwitch: state.searchInput.dateFlex.enabled
+        flexDays: state.searchInput.dateFlex.+-days
+      - type: BudgetSlider
+        bind: state.searchInput.budget
+      - type: TravelersWidget
+        bind: state.userProfile.travelers
+      - type: Preferences
+        stayType: state.searchInput.stayType
+        transport: state.searchInput.transport
+        pace: state.searchInput.pace
+        interests: state.searchInput.interests
+      - type: FooterActions
+        primary: { id: genOffers, label: "Показати варіанти" }
+        secondary: { id: back, label: "Назад" }
+    validations:
+      - rule: required(state.searchInput.to.length > 0)
+      - rule: required(state.searchInput.dateFrom && state.searchInput.dateTo)
+    transitions:
+      - on: click.genOffers
+        guard: validations.ok
+        do:
+          - action: call:POST_/ai/generate_offers
+        to: offers_list
+      - on: click.back
+        to: start
+
+  - id: offers_list
+    title: "Рекомендовані варіанти"
+    components:
+      - type: FiltersBar
+        fields: [priceRange, stayType, transport, pace]
+      - type: OfferCards
+        bind: state.offers
+        actions:
+          - { id: viewOffer, label: "Деталі" }
+          - { id: quickRefine, label: "Уточнити" }
+          - { id: compare, label: "Порівняти" }
+      - type: FooterActions
+        secondary: { id: adjustSearch, label: "Змінити параметри" }
+    transitions:
+      - on: click.viewOffer
+        do:
+          - action: setSelectedOffer(offerId)
+        to: offer_details
+      - on: click.quickRefine
+        do:
+          - action: openRefineModal
+      - on: click.compare
+        to: compare_drawer
+      - on: click.adjustSearch
+        to: survey_basics
+
+  - id: offer_details
+    title: "Деталі пакету"
+    components:
+      - type: Tabs
+        tabs: ["Перельоти","Проживання","Маршрут","Ціна"]
+      - type: MapPreview
+      - type: EditRow
+        items:
+          - { id: swapFlight, label: "Замінити переліт" }
+          - { id: swapStay, label: "Замінити проживання" }
+          - { id: tuneActivities, label: "Налаштувати активності" }
+      - type: FooterActions
+        primary: { id: buildItin, label: "Створити маршрут" }
+        secondary: { id: back, label: "Назад" }
+    transitions:
+      - on: click.swapFlight
+        to: flight_picker
+      - on: click.swapStay
+        to: stay_picker
+      - on: click.tuneActivities
+        to: activities_picker
+      - on: click.buildItin
+        do:
+          - action: call:POST_/ai/itinerary
+        to: itinerary_builder
+      - on: click.back
+        to: offers_list
+
+  - id: itinerary_builder
+    title: "Маршрут по днях"
+    components:
+      - type: DayAccordion
+        bind: state.itinerary.days
+        perItemActions:
+          - addActivity
+          - removeItem
+          - changeTime
+      - type: SummaryPanel
+        bind: state.itinerary.totals
+      - type: FooterActions
+        primary: { id: proceedBooking, label: "Перейти до бронювання" }
+        secondary: { id: saveShare, label: "Зберегти / Поділитись" }
+    transitions:
+      - on: click.saveShare
+        do:
+          - action: generateShareLink
+        to: share_modal
+      - on: click.proceedBooking
+        to: checkout_stub
+
+  - id: checkout_stub
+    title: "Бронювання (прототип)"
+    components:
+      - type: Stepper
+        steps: ["Перевірка деталей", "Контакти", "Оплата (заглушка)"]
+      - type: Notice
+        text: "У прототипі це демонстраційний крок. Кнопка нижче завершує сценарій."
+      - type: FooterActions
+        primary: { id: finish, label: "Завершити" }
+        secondary: { id: back, label: "Назад" }
+    transitions:
+      - on: click.finish
+        to: done
+      - on: click.back
+        to: itinerary_builder
+
+  - id: done
+    title: "Готово!"
+    components:
+      - type: Confetti
+      - type: Link
+        label: "Поділитись планом"
+        bind: state.shareLink
+      - type: Button
+        id: startOver
+        label: "Створити нову поїздку"
+    transitions:
+      - on: click.startOver
+        do:
+          - action: resetAll
+        to: start
+
+modals_drawers:
+  - id: refine_modal
+    fields: [budget, pace, interests, stayType, transport, dateFlex]
+    actions:
+      - { id: applyRefine, label: "Застосувати" }
+      - { id: cancel, label: "Скасувати" }
+    transitions:
+      - on: click.applyRefine
+        do:
+          - action: collectConstraints
+          - action: call:POST_/ai/refine
+        close: true
+        refresh: offers_list
+      - on: click.cancel
+        close: true
+
+  - id: compare_drawer
+    allowMaxItems: 3
+    actions:
+      - { id: close, label: "Закрити" }
+
+validators:
+  - id: datesValid
+  - id: budgetPositive
+  - id: travelersNotEmpty
