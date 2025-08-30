@@ -151,7 +151,11 @@ export class MemStorage implements IStorage {
 
   async createDestination(insertDestination: InsertDestination): Promise<Destination> {
     const id = randomUUID();
-    const destination: Destination = { ...insertDestination, id };
+    const destination: Destination = { 
+      ...insertDestination, 
+      id,
+      description: insertDestination.description || null 
+    };
     this.destinations.set(id, destination);
     return destination;
   }
@@ -162,7 +166,11 @@ export class MemStorage implements IStorage {
 
   async createPropertyType(insertPropertyType: InsertPropertyType): Promise<PropertyType> {
     const id = randomUUID();
-    const propertyType: PropertyType = { ...insertPropertyType, id };
+    const propertyType: PropertyType = { 
+      ...insertPropertyType, 
+      id,
+      description: insertPropertyType.description || null 
+    };
     this.propertyTypes.set(id, propertyType);
     return propertyType;
   }
@@ -180,7 +188,14 @@ export class MemStorage implements IStorage {
 
   async createSearchRequest(insertSearchRequest: InsertSearchRequest): Promise<SearchRequest> {
     const id = randomUUID();
-    const searchRequest: SearchRequest = { ...insertSearchRequest, id };
+    const searchRequest: SearchRequest = { 
+      ...insertSearchRequest, 
+      id,
+      adults: insertSearchRequest.adults || 2,
+      children: insertSearchRequest.children || 0,
+      rooms: insertSearchRequest.rooms || 1,
+      searchForFlights: insertSearchRequest.searchForFlights || 'false'
+    };
     this.searchRequests.set(id, searchRequest);
     return searchRequest;
   }

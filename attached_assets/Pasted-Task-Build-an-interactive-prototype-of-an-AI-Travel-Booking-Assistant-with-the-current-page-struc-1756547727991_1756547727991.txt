@@ -1,0 +1,69 @@
+Task: Build an interactive prototype of an “AI Travel Booking Assistant” with the current page structure as a UI reference.
+Flow: Use the provided flow.yaml (included below, unchanged) as the single source of truth for states, screens, transitions, and mock endpoints.
+
+Entry point for user flow (start page): guided form with options:
+- destination
+- dates or period
+- budget and number of persons (optional)
+- preferable travel type (optional)
+
+⸻
+
+Technical requirements
+	1.	Framework: React + Vite (TypeScript). You may use any UI kit (or just plain HTML/JSX).
+	2.	Routing: client-side; opening the app must directly land on the screen with ID survey_basics (path /survey or /).
+	•	If you use URL segments — map every start to survey_basics.
+	3.	State: one global store according to state.global from flow.yaml. Keep the same key/subkey structure.
+	4.	Endpoints (mocks):
+	•	POST /ai/generate_offers → returns 3–5 travel “packages”.
+	•	POST /ai/refine → refines offers according to constraints.
+	•	POST /ai/itinerary → generates a day-by-day itinerary.
+	•	All endpoints must be local (fake server or in-memory handlers).
+	•	Output must be deterministic: generate a seed (e.g., hash of searchInput) for stable results.
+	5.	Component mapping (simplify, but keep meaning and IDs):
+	•	FromToPicker → two <input autocomplete="off"> or <select>.
+	•	DateRange → two <input type="date"> + flexibility checkbox and day step.
+	•	BudgetSlider → <input type="range"> + min/max/perPerson fields.
+	•	TravelersWidget → adults/children (number inputs).
+	•	Preferences → checkboxes/toggles for stayType/transport/pace/interests.
+	•	OfferCards → cards with title, total price, short summary, buttons “Details/Refine/Compare”.
+	•	DayAccordion → collapsible day lists with actions add/remove/changeTime.
+	•	MapPreview → static placeholder (image/container).
+	•	FooterActions, Tabs, Stepper, Notice, Link, ButtonRow, Chips — implement simply, identifiers for events are key.
+	6.	Actions/transitions: implement all transitions and actions listed in flow.yaml (even if some are stubs), with correct side effects:
+	•	call:POST_/ai/generate_offers → write to state.offers.
+	•	setSelectedOffer(offerId) → write to state.selectedOfferId.
+	•	call:POST_/ai/itinerary → write to state.itinerary.
+	•	generateShareLink → generate pseudo-URL (e.g., https://example.local/trip/{hash}) → state.shareLink.
+	7.	Validation: minimum — direction(s) and dates in survey_basics.
+	8.	Localization/Formats: default uk-UA, currency EUR (see state.global).
+	9.	Start point: opening the app → immediately show survey_basics screen (“Quick Survey”).
+	•	Button “Show Offers” calls POST_/ai/generate_offers and navigates to offers_list.
+
+⸻
+
+Mock response data format
+	•	Offer:
+	{
+        id: string,
+        title: string,              // “Барселона: 5 днів (баланс)”
+        summary: string,            // короткий опис компромісів
+        price: { total: number, perPerson: number, currency: "EUR" },
+        flights?: [{from:string,to:string,dep:string,ret:string,carrier:string,price:number}],
+        stay?: [{name:string,stars?:number,area:string,nights:number,price:number}],
+        itineraryPreview?: [{day:number,items:string[]}],
+        tags?: string[]             // "бюджет", "центр", "біля моря"
+    }
+
+    • Itinerary:
+    {
+        days: [{date:string, segments:[{type:"activity"|"move"|"rest", title:string, time?:string, price?:number}]}],
+        totals: { price:number, currency:"EUR" }
+    }
+
+    Acceptance criteria
+	•	Opening the page → directly survey_basics.
+	•	Filling in the survey → click “Show Offers” → displays offers_list with 3–5 cards.
+	•	In “Details” I can navigate, replace hotel/flight (stubs), generate itinerary, save/share.
+	•	All transitions/buttons from flow.yaml work (even if some are placeholders).
+	•	State is stored in a single store, key structure matches YAML.
