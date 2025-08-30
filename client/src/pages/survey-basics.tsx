@@ -38,35 +38,50 @@ export default function SurveyBasics() {
   }
 
   const handleInterestToggle = (interest: string) => {
-    const interests = state.searchInput.interests.includes(interest)
-      ? state.searchInput.interests.filter(i => i !== interest)
-      : [...state.searchInput.interests, interest]
+    const interests = state.searchInput.preferences.interests.includes(interest)
+      ? state.searchInput.preferences.interests.filter((i: string) => i !== interest)
+      : [...state.searchInput.preferences.interests, interest]
     
     dispatch({
       type: 'SET_SEARCH_INPUT',
-      payload: { interests }
+      payload: { 
+        preferences: {
+          ...state.searchInput.preferences,
+          interests
+        }
+      }
     })
   }
 
   const handleStayTypeToggle = (stayType: string) => {
-    const types = state.searchInput.stayType.includes(stayType)
-      ? state.searchInput.stayType.filter(t => t !== stayType)
-      : [...state.searchInput.stayType, stayType]
+    const types = state.searchInput.preferences.stayType.includes(stayType)
+      ? state.searchInput.preferences.stayType.filter((t: string) => t !== stayType)
+      : [...state.searchInput.preferences.stayType, stayType]
     
     dispatch({
       type: 'SET_SEARCH_INPUT',
-      payload: { stayType: types }
+      payload: { 
+        preferences: {
+          ...state.searchInput.preferences,
+          stayType: types
+        }
+      }
     })
   }
 
   const handleTransportToggle = (transport: string) => {
-    const transports = state.searchInput.transport.includes(transport)
-      ? state.searchInput.transport.filter(t => t !== transport)
-      : [...state.searchInput.transport, transport]
+    const transports = state.searchInput.preferences.transport.includes(transport)
+      ? state.searchInput.preferences.transport.filter((t: string) => t !== transport)
+      : [...state.searchInput.preferences.transport, transport]
     
     dispatch({
       type: 'SET_SEARCH_INPUT',
-      payload: { transport: transports }
+      payload: { 
+        preferences: {
+          ...state.searchInput.preferences,
+          transport: transports
+        }
+      }
     })
   }
 
@@ -330,6 +345,15 @@ export default function SurveyBasics() {
                         const newCount = Math.max(1, adultsCount - 1)
                         setAdultsCount(newCount)
                         dispatch({
+                          type: 'SET_SEARCH_INPUT',
+                          payload: { 
+                            travelers: { 
+                              adults: newCount,
+                              children: childrenCount
+                            }
+                          }
+                        })
+                        dispatch({
                           type: 'SET_USER_PROFILE',
                           payload: { travelers: Array(newCount + childrenCount).fill(null).map((_, i) => ({ type: i < newCount ? 'adult' : 'child' })) }
                         })
@@ -346,6 +370,15 @@ export default function SurveyBasics() {
                       onClick={() => {
                         const newCount = adultsCount + 1
                         setAdultsCount(newCount)
+                        dispatch({
+                          type: 'SET_SEARCH_INPUT',
+                          payload: { 
+                            travelers: { 
+                              adults: newCount,
+                              children: childrenCount
+                            }
+                          }
+                        })
                         dispatch({
                           type: 'SET_USER_PROFILE',
                           payload: { travelers: Array(newCount + childrenCount).fill(null).map((_, i) => ({ type: i < newCount ? 'adult' : 'child' })) }
@@ -367,6 +400,15 @@ export default function SurveyBasics() {
                         const newCount = Math.max(0, childrenCount - 1)
                         setChildrenCount(newCount)
                         dispatch({
+                          type: 'SET_SEARCH_INPUT',
+                          payload: { 
+                            travelers: { 
+                              adults: adultsCount,
+                              children: newCount
+                            }
+                          }
+                        })
+                        dispatch({
                           type: 'SET_USER_PROFILE',
                           payload: { travelers: Array(adultsCount + newCount).fill(null).map((_, i) => ({ type: i < adultsCount ? 'adult' : 'child' })) }
                         })
@@ -383,6 +425,15 @@ export default function SurveyBasics() {
                       onClick={() => {
                         const newCount = childrenCount + 1
                         setChildrenCount(newCount)
+                        dispatch({
+                          type: 'SET_SEARCH_INPUT',
+                          payload: { 
+                            travelers: { 
+                              adults: adultsCount,
+                              children: newCount
+                            }
+                          }
+                        })
                         dispatch({
                           type: 'SET_USER_PROFILE',
                           payload: { travelers: Array(adultsCount + newCount).fill(null).map((_, i) => ({ type: i < adultsCount ? 'adult' : 'child' })) }
@@ -411,7 +462,7 @@ export default function SurveyBasics() {
                   {['пляж', 'їжа', 'музеї', 'з дітьми', 'нічне життя', 'природа', 'шопінг', 'спорт'].map((interest) => (
                     <Button
                       key={interest}
-                      variant={state.searchInput.interests.includes(interest) ? 'default' : 'outline'}
+                      variant={state.searchInput.preferences.interests.includes(interest) ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => handleInterestToggle(interest)}
                       data-testid={`button-interest-${interest}`}
@@ -438,7 +489,7 @@ export default function SurveyBasics() {
                   ].map((type) => (
                     <Button
                       key={type.value}
-                      variant={state.searchInput.stayType.includes(type.value) ? 'default' : 'outline'}
+                      variant={state.searchInput.preferences.stayType.includes(type.value) ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => handleStayTypeToggle(type.value)}
                       data-testid={`button-stay-${type.value}`}
@@ -466,7 +517,7 @@ export default function SurveyBasics() {
                   ].map((transport) => (
                     <Button
                       key={transport.value}
-                      variant={state.searchInput.transport.includes(transport.value) ? 'default' : 'outline'}
+                      variant={state.searchInput.preferences.transport.includes(transport.value) ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => handleTransportToggle(transport.value)}
                       data-testid={`button-transport-${transport.value}`}
@@ -493,9 +544,9 @@ export default function SurveyBasics() {
                   ].map((pace) => (
                     <Button
                       key={pace.value}
-                      variant={state.searchInput.pace === pace.value ? 'default' : 'outline'}
+                      variant={state.searchInput.preferences.pace === pace.value ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => dispatch({ type: 'SET_SEARCH_INPUT', payload: { pace: pace.value as any } })}
+                      onClick={() => dispatch({ type: 'SET_SEARCH_INPUT', payload: { preferences: { ...state.searchInput.preferences, pace: pace.value as any } } })}
                       data-testid={`button-pace-${pace.value}`}
                     >
                       {pace.label}

@@ -16,10 +16,16 @@ const initialState: GlobalState = {
     dateTo: null,
     dateFlex: { enabled: true, days: 3 },
     budget: { min: 0, max: 1200, perPerson: true },
-    interests: [],
-    stayType: ['hotel'],
-    transport: ['flight'],
-    pace: 'balanced'
+    travelers: {
+      adults: 2,
+      children: 0
+    },
+    preferences: {
+      interests: [],
+      stayType: ['hotel'],
+      transport: ['flight'],
+      pace: 'balanced'
+    }
   },
   offers: [],
   selectedOfferId: null,

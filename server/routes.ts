@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertSearchRequestSchema, type TravelOffer, type Itinerary, type SearchInput } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { describeDestination } from "./ai/destination";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Get all destinations
@@ -64,7 +65,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return a & a;
       }, 0);
       
-      const offers: TravelOffer[] = generateMockOffers(searchInput, seed);
+      const offers: TravelOffer[] = await generateMockOffers(searchInput, seed);
       res.json(offers);
     } catch (error) {
       res.status(500).json({ message: "Failed to generate offers" });
@@ -74,7 +75,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/ai/refine", async (req, res) => {
     try {
       const { constraints, currentOffer } = req.body;
-      const refinedOffers: TravelOffer[] = generateRefinedOffers(constraints, currentOffer);
+      const refinedOffers: TravelOffer[] = await generateRefinedOffers(constraints, currentOffer);
       res.json(refinedOffers);
     } catch (error) {
       res.status(500).json({ message: "Failed to refine offers" });
@@ -95,11 +96,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
-function generateMockOffers(searchInput: SearchInput, seed: number): TravelOffer[] {
+async function generateMockOffers(searchInput: SearchInput, seed: number): Promise<TravelOffer[]> {
   const destinations = searchInput.to.length > 0 ? searchInput.to : ['Барселона'];
   const basePrice = searchInput.budget.max * 0.7;
   
-  return [
+  // Determine season from date
+  const season = getSeasonFromDate(searchInput.dateFrom || undefined);
+  
+  // Create base offers
+  const baseOffers: TravelOffer[] = [
     {
       id: randomUUID(),
       title: `${destinations[0]}: 5 днів (економ)`,
@@ -191,18 +196,80 @@ function generateMockOffers(searchInput: SearchInput, seed: number): TravelOffer
       tags: ['преміум', 'люкс', 'ексклюзив']
     }
   ];
+
+  // Add AI-generated destination summaries to each offer
+  const enrichedOffers = await Promise.all(
+    baseOffers.map(async (offer) => {
+      try {
+        const destinationSummary = await describeDestination({
+          city: destinations[0],
+          season,
+          currency: 'EUR',
+          budgetHint: offer.tags?.includes('преміум') ? 'luxury' : 
+                     offer.tags?.includes('бюджет') ? 'budget' : 'mid-range',
+          travelers: `${searchInput.travelers?.adults || 2} adults${searchInput.travelers?.children ? `, ${searchInput.travelers.children} children` : ''}`,
+          interests: searchInput.preferences?.interests || ['culture', 'food'],
+          pace: searchInput.preferences?.pace || 'balanced',
+          locale: 'uk-UA'
+        });
+        
+        return {
+          ...offer,
+          destinationSummary
+        };
+      } catch (error) {
+        // If AI fails, return offer without destination summary
+        return offer;
+      }
+    })
+  );
+
+  return enrichedOffers;
 }
 
-function generateRefinedOffers(constraints: any, currentOffer: TravelOffer): TravelOffer[] {
+async function generateRefinedOffers(constraints: any, currentOffer: TravelOffer): Promise<TravelOffer[]> {
   // Return modified versions of the current offer based on constraints
-  return [
-    {
-      ...currentOffer,
-      id: randomUUID(),
-      title: currentOffer.title + ' (уточнено)',
-      summary: 'Варіант з урахуванням ваших побажань'
+  const refinedOffer = {
+    ...currentOffer,
+    id: randomUUID(),
+    title: currentOffer.title + ' (уточнено)',
+    summary: 'Варіант з урахуванням ваших побажань'
+  };
+
+  // If the original offer doesn't have a destination summary, try to generate one
+  if (!currentOffer.destinationSummary) {
+    try {
+      const destinationName = currentOffer.title.split(':')[0];
+      const destinationSummary = await describeDestination({
+        city: destinationName,
+        season: 'spring',
+        currency: 'EUR',
+        budgetHint: 'mid-range',
+        travelers: '2 adults',
+        interests: ['culture', 'food'],
+        pace: 'balanced',
+        locale: 'uk-UA'
+      });
+      
+      refinedOffer.destinationSummary = destinationSummary;
+    } catch (error) {
+      // Continue without destination summary if AI fails
     }
-  ];
+  }
+
+  return [refinedOffer];
+}
+
+function getSeasonFromDate(dateString?: string): string {
+  if (!dateString) return 'spring';
+  
+  const date = new Date(dateString);
+  const month = date.getMonth(); // 0-indexed
+  
+  if (month >= 2 && month <= 4) return 'spring';
+  if (month >= 5 && month <= 7) return 'summer';
+  if (month >= 8 && month <= 10) return 'autumn';
+  return 'winter';
 }
 
 function generateMockItinerary(selectedOffer: TravelOffer): Itinerary {

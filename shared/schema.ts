@@ -108,10 +108,16 @@ export type SearchInput = {
   dateTo: string | null
   dateFlex: DateFlexibility
   budget: Budget
-  interests: string[]
-  stayType: string[]
-  transport: string[]
-  pace: 'chill' | 'balanced' | 'intense'
+  travelers: {
+    adults: number
+    children: number
+  }
+  preferences: {
+    interests: string[]
+    stayType: string[]
+    transport: string[]
+    pace: 'chill' | 'balanced' | 'intense'
+  }
 }
 
 export type Flight = {
@@ -149,6 +155,7 @@ export type TravelOffer = {
   stay?: Stay[]
   itineraryPreview?: ItineraryItem[]
   tags?: string[]
+  destinationSummary?: string
 }
 
 export type ItinerarySegment = {
