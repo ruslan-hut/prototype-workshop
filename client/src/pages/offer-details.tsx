@@ -156,20 +156,54 @@ export default function OfferDetails() {
                   <CardContent>
                     {selectedOffer.stay?.map((stay, index) => (
                       <div key={index} className="border rounded-lg p-4 mb-4">
-                        <div className="flex justify-between items-center mb-2">
-                          <h4 className="font-semibold flex items-center gap-2">
-                            {stay.name}
-                            {stay.stars && (
-                              <div className="flex">
-                                {Array.from({ length: stay.stars }).map((_, i) => (
-                                  <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                                ))}
-                              </div>
+                        {/* Hotel Photos */}
+                        {stay.photos && stay.photos.length > 0 && (
+                          <div className="grid grid-cols-3 gap-2 mb-4">
+                            {stay.photos.slice(0, 3).map((photo, photoIndex) => (
+                              <img 
+                                key={photoIndex}
+                                src={photo} 
+                                alt={`${stay.name} photo ${photoIndex + 1}`}
+                                className="w-full h-20 object-cover rounded"
+                                data-testid={`hotel-photo-${photoIndex}`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                        
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className="font-semibold flex items-center gap-2">
+                              {stay.name}
+                              {stay.rating && (
+                                <div className="flex items-center gap-1">
+                                  <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                                  <span className="text-sm font-normal">{stay.rating}</span>
+                                </div>
+                              )}
+                              {stay.stars && (
+                                <div className="flex">
+                                  {Array.from({ length: stay.stars }).map((_, i) => (
+                                    <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                                  ))}
+                                </div>
+                              )}
+                            </h4>
+                            {stay.roomType && (
+                              <p className="text-sm text-gray-600">{stay.roomType}</p>
                             )}
-                          </h4>
+                            {stay.boardType && (
+                              <Badge variant="secondary" className="mt-1">{stay.boardType}</Badge>
+                            )}
+                          </div>
                           <Badge variant="outline">{stay.price}€/ніч</Badge>
                         </div>
-                        <div className="text-sm text-gray-600">
+                        
+                        {stay.description && (
+                          <p className="text-sm text-gray-600 mb-3">{stay.description}</p>
+                        )}
+                        
+                        <div className="text-sm text-gray-600 mb-3">
                           <div className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
                             {stay.area}
@@ -178,7 +212,33 @@ export default function OfferDetails() {
                             <Calendar className="w-3 h-3" />
                             {stay.nights} ночей
                           </div>
+                          {stay.cancellation && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <Clock className="w-3 h-3" />
+                              {stay.cancellation}
+                            </div>
+                          )}
                         </div>
+                        
+                        {/* Hotel Amenities */}
+                        {stay.amenities && stay.amenities.length > 0 && (
+                          <div className="mb-3">
+                            <h5 className="text-sm font-medium mb-2">Зручності:</h5>
+                            <div className="flex flex-wrap gap-1">
+                              {stay.amenities.slice(0, 6).map((amenity, amenityIndex) => (
+                                <Badge key={amenityIndex} variant="outline" className="text-xs">
+                                  {amenity}
+                                </Badge>
+                              ))}
+                              {stay.amenities.length > 6 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{stay.amenities.length - 6} більше
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
                         <Button 
                           variant="outline" 
                           size="sm" 
