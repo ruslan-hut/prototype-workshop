@@ -3,7 +3,6 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertSearchRequestSchema, type TravelOffer, type Itinerary, type SearchInput } from "@shared/schema";
 import { randomUUID } from "crypto";
-import { generateTravelOffers, refineOffer, buildItinerary } from "./openai-service";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Get all destinations
@@ -59,57 +58,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const searchInput: SearchInput = req.body;
       
-      // Convert SearchInput to TravelOfferRequest format
-      const request = {
-        destination: searchInput.to.length > 0 ? searchInput.to[0] : 'Барселона',
-        checkInDate: searchInput.dateFrom || '2024-09-15',
-        checkOutDate: searchInput.dateTo || '2024-09-20', 
-        adults: 2, // Default adults
-        children: 0, // Default children
-        rooms: 1, // Default rooms
-        budget: searchInput.budget.max || 1000,
-        interests: searchInput.interests || ['sightseeing', 'culture'],
-        accommodationType: searchInput.stayType?.[0] || 'hotel',
-        transportPreference: searchInput.transport?.[0] || 'any'
-      };
+      // Generate deterministic seed for consistent results
+      const seed = JSON.stringify(searchInput).split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0);
+        return a & a;
+      }, 0);
       
-      const aiOffers = await generateTravelOffers(request);
-      
-      // Convert AI response to TravelOffer format
-      const offers: TravelOffer[] = aiOffers.map((offer: any) => ({
-        id: offer.id || randomUUID(),
-        title: offer.title,
-        summary: offer.description,
-        price: {
-          total: offer.price,
-          perPerson: Math.round(offer.price / Math.max(1, request.adults)),
-          currency: 'EUR'
-        },
-        flights: [{
-          from: searchInput.from || 'KBP',
-          to: request.destination,
-          dep: request.checkInDate,
-          ret: request.checkOutDate,
-          carrier: 'AI Generated',
-          price: offer.flightPrice || Math.round(offer.price * 0.4)
-        }],
-        stay: [{
-          name: offer.hotelName || 'Generated Hotel',
-          stars: offer.hotelStars || 4,
-          area: 'City Center',
-          nights: Math.ceil((new Date(request.checkOutDate).getTime() - new Date(request.checkInDate).getTime()) / (1000 * 60 * 60 * 24)),
-          price: offer.hotelPrice || Math.round(offer.price * 0.6)
-        }],
-        itineraryPreview: [
-          { day: 1, items: offer.highlights?.slice(0, 3) || ['Прибуття', 'Оглядова екскурсія'] },
-          { day: 2, items: offer.highlights?.slice(1, 4) || ['Культурні памятки', 'Місцева кухня'] }
-        ],
-        tags: [offer.category, ...offer.highlights?.slice(0, 2) || []]
-      }));
-      
+      const offers: TravelOffer[] = generateMockOffers(searchInput, seed);
       res.json(offers);
     } catch (error) {
-      console.error('Error generating offers:', error);
       res.status(500).json({ message: "Failed to generate offers" });
     }
   });
@@ -117,29 +74,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/ai/refine", async (req, res) => {
     try {
       const { constraints, currentOffer } = req.body;
-      
-      const refinedOffer = await refineOffer({
-        currentOffer,
-        feedback: constraints || 'Будь ласка, покращте цю пропозицію',
-        newRequirements: constraints
-      });
-      
-      // Convert back to TravelOffer format
-      const offers: TravelOffer[] = [{
-        ...currentOffer,
-        id: randomUUID(),
-        title: refinedOffer.title || currentOffer.title + ' (уточнено)',
-        summary: refinedOffer.description || refinedOffer.summary || 'Варіант з урахуванням ваших побажань',
-        price: {
-          total: refinedOffer.price || currentOffer.price.total,
-          perPerson: Math.round((refinedOffer.price || currentOffer.price.total) / Math.max(1, 2)),
-          currency: 'EUR'
-        }
-      }];
-      
-      res.json(offers);
+      const refinedOffers: TravelOffer[] = generateRefinedOffers(constraints, currentOffer);
+      res.json(refinedOffers);
     } catch (error) {
-      console.error('Error refining offers:', error);
       res.status(500).json({ message: "Failed to refine offers" });
     }
   });
@@ -147,50 +84,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/ai/itinerary", async (req, res) => {
     try {
       const selectedOffer: TravelOffer = req.body;
-      
-      const request = {
-        destination: selectedOffer.flights?.[0]?.to || 'Барселона',
-        checkInDate: selectedOffer.flights?.[0]?.dep || '2024-09-15',
-        checkOutDate: selectedOffer.flights?.[0]?.ret || '2024-09-20',
-        adults: 2,
-        children: 0,
-        interests: selectedOffer.tags || ['sightseeing'],
-        budget: selectedOffer.price.total,
-        accommodationType: 'hotel',
-        selectedOffer
-      };
-      
-      const aiItinerary = await buildItinerary(request);
-      
-      // Convert AI response to Itinerary format
-      const itinerary: Itinerary = {
-        days: aiItinerary.itinerary?.map((day: any) => ({
-          date: new Date(Date.parse(request.checkInDate) + (day.day - 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          segments: day.activities?.map((activity: any) => ({
-            type: activity.time?.includes('Flight') || activity.title?.includes('переліт') ? 'move' : 'activity',
-            title: activity.title,
-            time: activity.time || '10:00',
-            price: activity.price || undefined
-          })) || [
-            { type: 'activity', title: day.title, time: '10:00' }
-          ]
-        })) || [
-          {
-            date: request.checkInDate,
-            segments: [
-              { type: 'activity', title: 'День заплановано ШІ', time: '10:00' }
-            ]
-          }
-        ],
-        totals: {
-          price: aiItinerary.totalBudget || selectedOffer.price.total,
-          currency: 'EUR'
-        }
-      };
-      
+      const itinerary: Itinerary = generateMockItinerary(selectedOffer);
       res.json(itinerary);
     } catch (error) {
-      console.error('Error generating itinerary:', error);
       res.status(500).json({ message: "Failed to generate itinerary" });
     }
   });
@@ -199,4 +95,167 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
-// Old mock functions removed - now using OpenAI API
+function generateMockOffers(searchInput: SearchInput, seed: number): TravelOffer[] {
+  const destinations = searchInput.to.length > 0 ? searchInput.to : ['Барселона'];
+  const basePrice = searchInput.budget.max * 0.7;
+  
+  return [
+    {
+      id: randomUUID(),
+      title: `${destinations[0]}: 5 днів (економ)`,
+      summary: 'Бюджетний варіант з гарним співвідношенням ціна-якість',
+      price: {
+        total: Math.round(basePrice * 0.8),
+        perPerson: Math.round(basePrice * 0.8 / Math.max(1, searchInput.budget.perPerson ? 1 : 2)),
+        currency: 'EUR'
+      },
+      flights: [{
+        from: searchInput.from || 'KBP',
+        to: destinations[0],
+        dep: searchInput.dateFrom || '2024-09-15',
+        ret: searchInput.dateTo || '2024-09-20',
+        carrier: 'Ryanair',
+        price: 120
+      }],
+      stay: [{
+        name: 'Hotel Barcelona Center',
+        stars: 3,
+        area: 'Eixample',
+        nights: 4,
+        price: 85
+      }],
+      itineraryPreview: [
+        { day: 1, items: ['Прибуття', 'Sagrada Familia', 'Вечеря в Готичному кварталі'] },
+        { day: 2, items: ['Park Güell', 'Casa Batlló', 'Пляж Barceloneta'] }
+      ],
+      tags: ['бюджет', 'центр', 'культура']
+    },
+    {
+      id: randomUUID(),
+      title: `${destinations[0]}: 5 днів (комфорт)`,
+      summary: 'Оптимальний баланс комфорту та вражень',
+      price: {
+        total: Math.round(basePrice),
+        perPerson: Math.round(basePrice / Math.max(1, searchInput.budget.perPerson ? 1 : 2)),
+        currency: 'EUR'
+      },
+      flights: [{
+        from: searchInput.from || 'KBP',
+        to: destinations[0],
+        dep: searchInput.dateFrom || '2024-09-15',
+        ret: searchInput.dateTo || '2024-09-20',
+        carrier: 'Vueling',
+        price: 180
+      }],
+      stay: [{
+        name: 'Hotel Majestic',
+        stars: 4,
+        area: 'Passeig de Gràcia',
+        nights: 4,
+        price: 150
+      }],
+      itineraryPreview: [
+        { day: 1, items: ['Прибуття', 'Sagrada Familia', 'Гастрономічний тур'] },
+        { day: 2, items: ['Park Güell', 'Музей Пікассо', 'Фламенко шоу'] }
+      ],
+      tags: ['комфорт', 'центр', 'гастрономія']
+    },
+    {
+      id: randomUUID(),
+      title: `${destinations[0]}: 5 днів (преміум)`,
+      summary: 'Розкішний відпочинок без компромісів',
+      price: {
+        total: Math.round(basePrice * 1.4),
+        perPerson: Math.round(basePrice * 1.4 / Math.max(1, searchInput.budget.perPerson ? 1 : 2)),
+        currency: 'EUR'
+      },
+      flights: [{
+        from: searchInput.from || 'KBP',
+        to: destinations[0],
+        dep: searchInput.dateFrom || '2024-09-15',
+        ret: searchInput.dateTo || '2024-09-20',
+        carrier: 'Lufthansa',
+        price: 320
+      }],
+      stay: [{
+        name: 'Hotel Arts Barcelona',
+        stars: 5,
+        area: 'Port Olímpic',
+        nights: 4,
+        price: 300
+      }],
+      itineraryPreview: [
+        { day: 1, items: ['Прибуття', 'Spa процедури', 'Мішеленівський ресторан'] },
+        { day: 2, items: ['Приватна екскурсія по Gaudí', 'Яхт тур', 'Дегустація вин'] }
+      ],
+      tags: ['преміум', 'люкс', 'ексклюзив']
+    }
+  ];
+}
+
+function generateRefinedOffers(constraints: any, currentOffer: TravelOffer): TravelOffer[] {
+  // Return modified versions of the current offer based on constraints
+  return [
+    {
+      ...currentOffer,
+      id: randomUUID(),
+      title: currentOffer.title + ' (уточнено)',
+      summary: 'Варіант з урахуванням ваших побажань'
+    }
+  ];
+}
+
+function generateMockItinerary(selectedOffer: TravelOffer): Itinerary {
+  return {
+    days: [
+      {
+        date: '2024-09-15',
+        segments: [
+          { type: 'move', title: 'Переліт до Барселони', time: '09:00', price: 320 },
+          { type: 'activity', title: 'Заїзд в готель', time: '14:00' },
+          { type: 'activity', title: 'Прогулянка Готичним кварталом', time: '16:00' },
+          { type: 'activity', title: 'Вечеря в традиційній тапас-барі', time: '20:00', price: 35 }
+        ]
+      },
+      {
+        date: '2024-09-16',
+        segments: [
+          { type: 'activity', title: 'Відвідування Sagrada Familia', time: '10:00', price: 26 },
+          { type: 'activity', title: 'Обід', time: '13:00', price: 20 },
+          { type: 'activity', title: 'Park Güell', time: '15:00', price: 10 },
+          { type: 'rest', title: 'Відпочинок в готелі', time: '18:00' }
+        ]
+      },
+      {
+        date: '2024-09-17',
+        segments: [
+          { type: 'activity', title: 'Casa Batlló та Casa Milà', time: '10:00', price: 50 },
+          { type: 'activity', title: 'Шопінг на Passeig de Gràcia', time: '14:00' },
+          { type: 'activity', title: 'Пляж Barceloneta', time: '16:00' },
+          { type: 'activity', title: 'Ужин з видом на море', time: '20:00', price: 45 }
+        ]
+      },
+      {
+        date: '2024-09-18',
+        segments: [
+          { type: 'activity', title: 'Музей Пікассо', time: '10:00', price: 14 },
+          { type: 'activity', title: 'Прогулянка по Борн кварталу', time: '12:00' },
+          { type: 'activity', title: 'Канатна дорога на Монжуїк', time: '15:00', price: 12 },
+          { type: 'activity', title: 'Фламенко шоу', time: '21:00', price: 40 }
+        ]
+      },
+      {
+        date: '2024-09-19',
+        segments: [
+          { type: 'activity', title: 'Останні покупки', time: '10:00' },
+          { type: 'move', title: 'Трансфер в аеропорт', time: '12:00', price: 25 },
+          { type: 'move', title: 'Переліт додому', time: '15:00' }
+        ]
+      }
+    ],
+    totals: {
+      price: selectedOffer.price.total,
+      currency: 'EUR'
+    }
+  };
+}
